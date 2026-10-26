@@ -8,7 +8,14 @@
 </div></section>
 <section class="alt"><div class="wrap"><span class="bar"></span><h2>Our mission</h2>
 <p class="lead">To nurture and protect vulnerable children, educate the next generation, and empower rural communities, especially women, youths and the aged, with tools, training and opportunities for sustainable development.</p></div></section>
-<section><div class="wrap"><span class="bar"></span><h2>Where to find us</h2><div class="g2" style="margin-top:28px">
+<section><div class="wrap"><span class="bar"></span><h2>The people behind RACO</h2>
+<p class="lead">Our board ensures financial transparency, spiritual integrity and lasting impact across everything RACO does.</p>
+<?php foreach(['Trustees'=>'Board of Trustees','Ambassadors'=>'Our ambassadors'] as $g=>$t): ?>
+<h3 style="margin:38px 0 18px"><?=$t?></h3><div class="tm">
+<?php foreach($S['team'] as $m) if($m[3]==$g) echo '<div class="mem rv">'.photo($m[2],$m[0],'pt').'<b>'.h($m[0]).'</b><span>'.h($m[1]).'</span></div>';?>
+</div><?php endforeach; ?>
+</div></section>
+<section class="alt"><div class="wrap"><span class="bar"></span><h2>Where to find us</h2><div class="g2" style="margin-top:28px">
 <?php foreach($S['loc'] as $l)echo '<div class="tile"><h3>'.h($l[0]).'</h3><p>'.h($l[1]).'</p>'.($l[2]?'<p style="margin-top:8px"><b>'.h($l[2]).'</b></p>':'').'</div>';?>
 </div></div></section>
 <?php require 'includes/footer.php';?>
