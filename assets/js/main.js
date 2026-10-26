@@ -83,12 +83,17 @@
     });
   }
 
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') {
-      setMenu(false);
-      if (burger) burger.focus();
-    }
-  });
+  
+document.addEventListener('keydown', event => {
+  if (
+    event.key === 'Escape' &&
+    header?.classList.contains('open')
+  ) {
+    setMenu(false);
+    burger?.focus();
+  }
+});
+
 
   document.addEventListener('click', event => {
     if (
