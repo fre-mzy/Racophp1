@@ -26,11 +26,15 @@
   }
 
   if (preloader) {
-    window.addEventListener('load', hidePreloader, {
-      once: true
-    });
+    if (document.readyState === 'complete') {
+      hidePreloader();
+    } else {
+      window.addEventListener('load', hidePreloader, {
+        once: true
+      });
+    }
 
-    // Never keep the visitor behind the loader indefinitely.
+    // Fallback: never leave visitors behind the loader.
     window.setTimeout(hidePreloader, 3000);
   }
 
@@ -41,10 +45,20 @@
   const burger = $('.burger');
   const nav = $('#site-nav');
 
+  const mobileBreakpoint = window.matchMedia(
+    '(max-width: 860px)'
+  );
+
   function setMenu(open) {
     if (!header || !burger) return;
 
+    // The mobile menu should never remain open on desktop.
+    if (!mobileBreakpoint.matches) {
+      open = false;
+    }
+
     header.classList.toggle('open', open);
+
     burger.setAttribute('aria-expanded', String(open));
     burger.setAttribute(
       'aria-label',
@@ -83,17 +97,15 @@
     });
   }
 
-  
-document.addEventListener('keydown', event => {
-  if (
-    event.key === 'Escape' &&
-    header?.classList.contains('open')
-  ) {
-    setMenu(false);
-    burger?.focus();
-  }
-});
-
+  document.addEventListener('keydown', event => {
+    if (
+      event.key === 'Escape' &&
+      header?.classList.contains('open')
+    ) {
+      setMenu(false);
+      burger?.focus();
+    }
+  });
 
   document.addEventListener('click', event => {
     if (
@@ -104,6 +116,22 @@ document.addEventListener('keydown', event => {
       setMenu(false);
     }
   });
+
+  function handleBreakpointChange() {
+    if (!mobileBreakpoint.matches) {
+      setMenu(false);
+    }
+  }
+
+  if (mobileBreakpoint.addEventListener) {
+    mobileBreakpoint.addEventListener(
+      'change',
+      handleBreakpointChange
+    );
+  } else {
+    // Compatibility with older browsers.
+    mobileBreakpoint.addListener(handleBreakpointChange);
+  }
 
   // -----------------------------
   // SCROLL REVEALS + COUNTERS
@@ -131,7 +159,9 @@ document.addEventListener('keydown', event => {
     let startTime;
 
     function frame(now) {
-      if (startTime === undefined) startTime = now;
+      if (startTime === undefined) {
+        startTime = now;
+      }
 
       const progress = Math.min(
         (now - startTime) / duration,
@@ -160,7 +190,15 @@ document.addEventListener('keydown', event => {
     }
   }
 
-  if ('IntersectionObserver' in window) {
+  function revealEverything() {
+    document.documentElement.classList.remove('js-ready');
+    revealItems.forEach(reveal);
+  }
+
+  if (reduceMotion.matches) {
+    // Keep all content visible when motion is reduced.
+    revealEverything();
+  } else if ('IntersectionObserver' in window) {
     try {
       const observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
@@ -173,22 +211,18 @@ document.addEventListener('keydown', event => {
         threshold: 0.15
       });
 
-      // Activate hidden reveal states only after observer setup.
-      if (!reduceMotion.matches) {
-        document.documentElement.classList.add('js-ready');
-      }
+      // Enable hidden reveal states only after observer setup.
+      document.documentElement.classList.add('js-ready');
 
       revealItems.forEach(element => {
         observer.observe(element);
       });
     } catch (error) {
-      // Animation failure must never hide page content.
-      document.documentElement.classList.remove('js-ready');
-      revealItems.forEach(reveal);
+      revealEverything();
     }
   } else {
-    // Older browser fallback.
-    revealItems.forEach(reveal);
+    // Fallback for older browsers.
+    revealEverything();
   }
 
   // -----------------------------
@@ -196,7 +230,8 @@ document.addEventListener('keydown', event => {
   // -----------------------------
   const slides = $$('.sl');
   const texts = $$('.hc .t');
-  const dots = $$('.dots b');
+  const dots = $$('.dots button');
+  const hero = $('.hero');
 
   let current = Math.max(
     0,
@@ -205,8 +240,7 @@ document.addEventListener('keydown', event => {
 
   let timer = null;
   let touchStartX = null;
-
-  const hero = $('.hero');
+  let touchStartY = null;
 
   function showSlide(nextIndex) {
     if (!slides.length) return;
@@ -232,10 +266,11 @@ document.addEventListener('keydown', event => {
       const active = index === next;
 
       dot.classList.toggle('on', active);
-
-      if (dot.matches('button')) {
-        dot.setAttribute('aria-pressed', String(active));
-      }
+      dot.setAttribute('aria-pressed', String(active));
+      dot.setAttribute(
+        'aria-label',
+        `Show slide ${index + 1} of ${slides.length}`
+      );
     });
 
     current = next;
@@ -260,23 +295,35 @@ document.addEventListener('keydown', event => {
     }
 
     timer = window.setInterval(() => {
-      if (!hero || !hero.matches(':hover')) {
+      // Pause while the hero is hovered or contains keyboard focus.
+      if (
+        hero &&
+        !hero.matches(':hover') &&
+        !hero.contains(document.activeElement)
+      ) {
         showSlide(current + 1);
       }
     }, 6500);
   }
 
-  if (slides.length > 1 && texts.length === slides.length) {
+  if (hero && slides.length > 1 && texts.length === slides.length) {
     showSlide(current);
 
     dots.forEach((dot, index) => {
+      dot.type = 'button';
+
       dot.addEventListener('click', () => {
         showSlide(index);
         startAutoplay();
       });
     });
 
+    // Prevent duplicate arrow controls if initialization is repeated.
     [['prev', -1], ['next', 1]].forEach(([direction, step]) => {
+      const existing = hero.querySelector(`.arr.${direction}`);
+
+      if (existing) return;
+
       const button = document.createElement('button');
 
       button.type = 'button';
@@ -285,36 +332,51 @@ document.addEventListener('keydown', event => {
         'aria-label',
         direction === 'prev' ? 'Previous slide' : 'Next slide'
       );
-      button.textContent = direction === 'prev' ? '\u2039' : '\u203a';
+      button.textContent =
+        direction === 'prev' ? '\u2039' : '\u203a';
 
       button.addEventListener('click', () => {
         showSlide(current + step);
         startAutoplay();
       });
 
-      hero?.appendChild(button);
+      hero.appendChild(button);
     });
 
-    hero?.addEventListener('mouseenter', stopAutoplay);
-    hero?.addEventListener('mouseleave', startAutoplay);
+    hero.addEventListener('mouseenter', stopAutoplay);
+    hero.addEventListener('mouseleave', startAutoplay);
 
-    hero?.addEventListener('focusin', stopAutoplay);
-    hero?.addEventListener('focusout', startAutoplay);
+    hero.addEventListener('focusin', stopAutoplay);
+    hero.addEventListener('focusout', event => {
+      if (!hero.contains(event.relatedTarget)) {
+        startAutoplay();
+      }
+    });
 
-    hero?.addEventListener('touchstart', event => {
+    hero.addEventListener('touchstart', event => {
       touchStartX = event.touches[0]?.clientX ?? null;
+      touchStartY = event.touches[0]?.clientY ?? null;
     }, { passive: true });
 
-    hero?.addEventListener('touchend', event => {
-      if (touchStartX === null) return;
+    hero.addEventListener('touchend', event => {
+      if (touchStartX === null || touchStartY === null) return;
 
-      const endX = event.changedTouches[0]?.clientX;
-      const difference = endX - touchStartX;
+      const touch = event.changedTouches[0];
+
+      if (!touch) return;
+
+      const differenceX = touch.clientX - touchStartX;
+      const differenceY = touch.clientY - touchStartY;
 
       touchStartX = null;
+      touchStartY = null;
 
-      if (Math.abs(difference) > 50) {
-        showSlide(current + (difference < 0 ? 1 : -1));
+      // Ignore vertical page scrolling.
+      if (
+        Math.abs(differenceX) > 50 &&
+        Math.abs(differenceX) > Math.abs(differenceY)
+      ) {
+        showSlide(current + (differenceX < 0 ? 1 : -1));
         startAutoplay();
       }
     }, { passive: true });
@@ -327,7 +389,15 @@ document.addEventListener('keydown', event => {
       }
     });
 
-    reduceMotion.addEventListener?.('change', startAutoplay);
+    const handleMotionChange = () => {
+      startAutoplay();
+    };
+
+    if (reduceMotion.addEventListener) {
+      reduceMotion.addEventListener('change', handleMotionChange);
+    } else {
+      reduceMotion.addListener(handleMotionChange);
+    }
 
     startAutoplay();
   }
@@ -346,7 +416,7 @@ document.addEventListener('keydown', event => {
       const data = new FormData(form);
       const name = String(data.get('name') || '').trim();
       const message = String(data.get('msg') || '').trim();
-      const phone = form.dataset.wa;
+      const phone = String(form.dataset.wa || '').replace(/\D/g, '');
 
       if (!name || !message || !phone) return;
 
@@ -356,8 +426,17 @@ document.addEventListener('keydown', event => {
       const url =
         `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
 
-      window.open(url, '_blank', 'noopener,noreferrer');
+      const newWindow = window.open(
+        url,
+        '_blank',
+        'noopener,noreferrer'
+      );
+
+      // If the browser blocks the popup, let the visitor open WhatsApp.
+      if (!newWindow) {
+        window.location.href = url;
+      }
     });
   }
 })();
-                 
+      
