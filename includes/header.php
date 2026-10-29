@@ -109,5 +109,4 @@ $description = $descriptions[$cur]
 
         </div>
     </header>
-</body>
-</html>
+
