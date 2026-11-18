@@ -1,351 +1,130 @@
 
 <?php
-$title = 'Our Scholars';
-require 'includes/header.php';
+// RACO WEBSITE SHARED CONFIGURATION
 
-/**
- * Fetches the published Google Sheet CSV.
- * The result is cached for 10 minutes.
- */
-function sheet_rows($url) {
-    if (empty($url)) {
-        return [];
+if (!function_exists('h')) {
+    function h($value) {
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
     }
+}
 
-    $cache = sys_get_temp_dir() . '/raco_scholars.csv';
+if (!function_exists('photo')) {
+    function photo($file, $alt, $class = '') {
+        $path = __DIR__ . '/../assets/img/' . $file;
 
-    if (!is_file($cache) || (time() - filemtime($cache)) > 600) {
-        $context = stream_context_create([
-            'http' => [
-                'timeout' => 15,
-                'follow_location' => 1,
-                'user_agent' => 'RACO-Scholars-Website/1.0'
-            ]
-        ]);
-
-        $data = @file_get_contents($url, false, $context);
-
-        if ($data !== false && strlen($data) > 10) {
-            file_put_contents($cache, $data);
+        if (is_file($path)) {
+            return '<img class="' . h($class) . '" src="assets/img/' .
+                h($file) . '" alt="' . h($alt) . '" loading="lazy">';
         }
+
+        return '<div class="ph ' . h($class) . '">
+            <span>PHOTO TAG<br><b>' . h($file) . '</b><br>' .
+            h($alt) . '</span>
+        </div>';
     }
-
-    if (!is_file($cache)) {
-        return [];
-    }
-
-    $file = fopen($cache, 'r');
-
-    if (!$file) {
-        return [];
-    }
-
-    $rows = [];
-
-    while (($row = fgetcsv($file, 0, ',', '"', '')) !== false) {
-        $rows[] = $row;
-    }
-
-    fclose($file);
-
-    return $rows;
 }
 
-/**
- * Converts Google Drive and ordinary image links
- * into browser-displayable image URLs.
- */
-function drive_img($value) {
-    $value = trim((string)$value);
+// Google Sheets CSV connection and temporary caching
+if (!function_exists('sheet_rows')) {
+    function sheet_rows($url) {
+        if (!$url) {
+            return [];
+        }
 
-    if ($value === '') {
-        return '';
-    }
+        $cache = sys_get_temp_dir() . '/raco_scholars.csv';
 
-    // Google Forms may return more than one uploaded file.
-    $links = preg_split('/,\s*(?=https?:\/\/)/i', $value);
-    $value = trim($links[0] ?? '');
+        if (!is_file($cache) || time() - filemtime($cache) > 600) {
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 15,
+                    'user_agent' => 'RACO Website'
+                ]
+            ]);
 
-    if ($value === '') {
-        return '';
-    }
+            $data = @file_get_contents($url, false, $context);
 
-    $id = '';
-
-    // Google Drive file links:
-    // drive.google.com/file/d/FILE_ID/view
-    // drive.google.com/uc?id=FILE_ID
-    // drive.google.com/open?id=FILE_ID
-    // drive.google.com/thumbnail?id=FILE_ID
-    if (preg_match('~/(?:file/)?d/([a-zA-Z0-9_-]+)~', $value, $match)) {
-        $id = $match[1];
-    } elseif (preg_match('~[?&]id=([a-zA-Z0-9_-]+)~', $value, $match)) {
-        $id = $match[1];
-    }
-
-    if ($id !== '') {
-        return 'https://drive.google.com/thumbnail?id=' .
-            rawurlencode($id) . '&sz=w1000';
-    }
-
-    // Accept ordinary HTTPS image URLs.
-    if (
-        filter_var($value, FILTER_VALIDATE_URL) &&
-        in_array(strtolower(parse_url($value, PHP_URL_SCHEME)), ['http', 'https'], true)
-    ) {
-        return $value;
-    }
-
-    return '';
-}
-
-/**
- * Finds a column using its heading.
- */
-function find_column($headers, $keywords, $exclude = []) {
-    foreach ($headers as $index => $heading) {
-        foreach ($exclude as $word) {
-            if (strpos($heading, $word) !== false) {
-                continue 2;
+            if ($data !== false && strlen($data) > 10) {
+                file_put_contents($cache, $data);
             }
         }
 
-        foreach ($keywords as $word) {
-            if (strpos($heading, $word) !== false) {
-                return $index;
+        if (!is_file($cache)) {
+            return [];
+        }
+
+        $handle = fopen($cache, 'r');
+
+        if (!$handle) {
+            return [];
+        }
+
+        $rows = [];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            if (array_filter($row, function ($value) {
+                return trim((string)$value) !== '';
+            })) {
+                $rows[] = $row;
             }
         }
-    }
 
-    return -1;
-}
+        fclose($handle);
 
-/**
- * Load scholar records.
- */
-$rows = sheet_rows($S['sheet'] ?? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR9m6VlnqMmkEw_oi9vXLDzgIeUPxp3uULTF9BtmqpauwsCys061pOn4SRtC7CdQaghzlnw5nOSXrpO/pub?gid=656297882&single=true&output=csv');
-$cards = [];
-
-if (count($rows) > 1) {
-    $headers = array_map(
-        function ($heading) {
-            return strtolower(trim((string)$heading));
-        },
-        array_shift($rows)
-    );
-
-    $nameColumn = find_column(
-        $headers,
-        ['name'],
-        ['school', 'institution', 'course']
-    );
-
-    $schoolColumn = find_column($headers, ['institution', 'school', 'university']);
-    $courseColumn = find_column($headers, ['course', 'programme', 'department']);
-    $levelColumn = find_column($headers, ['level', 'year', 'class']);
-    $storyColumn = find_column($headers, ['story', 'background', 'about']);
-    $photoColumn = find_column($headers, ['picture', 'photo', 'image', 'upload']);
-    $approvalColumn = find_column($headers, ['approved', 'approve']);
-
-    foreach ($rows as $row) {
-        // Only display students approved by RACO.
-        if ($approvalColumn < 0 || $nameColumn < 0) {
-            continue;
+        // Remove UTF-8 BOM from the first heading
+        if (!empty($rows[0][0])) {
+            $rows[0][0] = preg_replace('/^\xEF\xBB\xBF/', '', $rows[0][0]);
         }
 
-        $approval = strtolower(trim($row[$approvalColumn] ?? ''));
-
-        if ($approval !== 'yes') {
-            continue;
-        }
-
-        $name = trim($row[$nameColumn] ?? '');
-
-        if ($name === '') {
-            continue;
-        }
-
-        $course = $courseColumn >= 0
-            ? trim($row[$courseColumn] ?? '')
-            : '';
-
-        $level = $levelColumn >= 0
-            ? trim($row[$levelColumn] ?? '')
-            : '';
-
-        $cards[] = [
-            'n' => $name,
-            's' => $schoolColumn >= 0
-                ? trim($row[$schoolColumn] ?? '')
-                : '',
-            'c' => $course,
-            'l' => $level,
-            'b' => $storyColumn >= 0
-                ? trim($row[$storyColumn] ?? '')
-                : '',
-            'p' => $photoColumn >= 0
-                ? drive_img($row[$photoColumn] ?? '')
-                : ''
-        ];
+        return $rows;
     }
 }
-?>
 
-<style>
-.sch {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 25px;
+// Convert Google Drive image links into displayable image links
+if (!function_exists('drive_img')) {
+    function drive_img($value) {
+        $value = trim((string)$value);
+
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('~/d/([a-zA-Z0-9_-]+)~', $value, $match)) {
+            return 'https://drive.google.com/thumbnail?id=' .
+                $match[1] . '&sz=w1000';
+        }
+
+        if (preg_match('/[?&]id=([a-zA-Z0-9_-]+)/', $value, $match)) {
+            return 'https://drive.google.com/thumbnail?id=' .
+                $match[1] . '&sz=w1000';
+        }
+
+        if (filter_var($value, FILTER_VALIDATE_URL) &&
+            in_array(parse_url($value, PHP_URL_SCHEME), ['http', 'https'], true)) {
+            return $value;
+        }
+
+        return '';
+    }
 }
 
-.sch .mem {
-    min-width: 0;
-    overflow: hidden;
-}
+// Main website settings
+$S = [
+    'n'     => 'RACO Commission',
+    's'     => 'Child and Rural Care Initiative',
+    'since' => 2003,
 
-.sch .pt {
-    width: 100%;
-    height: 260px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    object-fit: cover;
-    border-radius: 12px;
-    background: #f1f3f2;
-}
+    // Published Google Sheets CSV link for the Scholars page
+    'sheet' => 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR9m6VlnqMmkEw_oi9vXLDzgIeUPxp3uULTF9BtmqpauwsCys061pOn4SRtC7CdQaghzlnw5nOSXrpO/pub?gid=656297882&single=true&output=csv',
 
-.sch .ph {
-    color: #64736b;
-    text-align: center;
-    padding: 15px;
-}
+    'ga'    => '',
+    'wa'    => '2347080004902',
+    'mail'  => 'info@racochildinitiative.org',
 
-.sch .mem > b {
-    display: block;
-    margin-top: 14px;
-}
+    'address' => 'No. 33 Adebambo Street, Araromi, Ibeju-Lekki, Lagos State',
 
-.sch .mem > span {
-    display: block;
-    margin-top: 5px;
-}
-
-.sch details {
-    margin-top: 12px;
-}
-
-.sch summary {
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.sch details p {
-    margin-top: 8px;
-}
-</style>
-
-<div class="page">
-    <div class="wrap">
-        <span class="bar"></span>
-        <h1>Our Scholars</h1>
-
-        <p class="lead">
-            The young people RACO is helping to learn, and the stories behind them.
-            Each profile is shared with the consent of the student or their guardian.
-        </p>
-    </div>
-</div>
-
-<section>
-    <div class="wrap">
-
-        <?php if (!empty($cards)): ?>
-
-            <div class="tm sch">
-
-                <?php foreach ($cards as $c): ?>
-
-                    <div class="mem rv">
-
-                        <?php if (!empty($c['p'])): ?>
-
-                            <img
-                                class="pt"
-                                src="<?= h($c['p']) ?>"
-                                alt="<?= h($c['n']) ?>"
-                                loading="lazy"
-                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
-                            >
-
-                            <div class="ph pt" style="display:none">
-                                <span>Photo unavailable</span>
-                            </div>
-
-                        <?php else: ?>
-
-                            <div class="ph pt">
-                                <span>No photo uploaded</span>
-                            </div>
-
-                        <?php endif; ?>
-
-                        <b><?= h($c['n']) ?></b>
-
-                        <?php
-                        if ($c['c'] || $c['l']) {
-                            $details = trim(
-                                $c['c'] .
-                                ($c['c'] && $c['l'] ? ', ' : '') .
-                                $c['l']
-                            );
-
-                            echo '<span>' . h($details) . '</span>';
-                        }
-
-                        if ($c['s']) {
-                            echo '<span>' . h($c['s']) . '</span>';
-                        }
-                        ?>
-
-                        <?php if (!empty($c['b'])): ?>
-
-                            <details>
-                                <summary>Read their story</summary>
-                                <p><?= nl2br(h($c['b'])) ?></p>
-                            </details>
-
-                        <?php endif; ?>
-
-                    </div>
-
-                <?php endforeach; ?>
-
-            </div>
-
-        <?php else: ?>
-
-            <p class="lead">
-                Student profiles are coming soon. Check back shortly.
-            </p>
-
-        <?php endif; ?>
-
-    </div>
-</section>
-
-<section class="cta">
-    <div class="wrap rv">
-        <h2>Help a child reach the next class</h2>
-
-        <p>
-            Sponsor a student's education, books and school fees.
-        </p>
-
-        <a class="btn btn-r" href="support.php">
-            Sponsor a student
-        </a>
-    </div>
-</section>
-
-<?php require 'includes/footer.php'; ?>
-
+    'ph' => [
+        ['0802 262 8461', 'Hotline 1 (ES)'],
+        ['0802 699 4164', 'Hotline 3'],
+        ['0708 000 4902', 'Official WhatsApp']
+    ]
+];
