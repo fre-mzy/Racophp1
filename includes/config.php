@@ -1,38 +1,351 @@
+
 <?php
-function h($s){return htmlspecialchars($s,ENT_QUOTES);}
-// Shows the photo if the file exists in assets/img, otherwise a visible tag telling you which photo to add.
-function photo($f,$alt,$c=''){
-  if(file_exists(__DIR__.'/../assets/img/'.$f))return '<img class="'.$c.'" src="assets/img/'.$f.'" alt="'.h($alt).'" loading="lazy">';
-  return '<div class="ph '.$c.'"><span>PHOTO TAG<br><b>'.h($f).'</b><br>'.h($alt).'</span></div>';
+$title = 'Our Scholars';
+require 'includes/header.php';
+
+/**
+ * Fetches the published Google Sheet CSV.
+ * The result is cached for 10 minutes.
+ */
+function sheet_rows($url) {
+    if (empty($url)) {
+        return [];
+    }
+
+    $cache = sys_get_temp_dir() . '/raco_scholars.csv';
+
+    if (!is_file($cache) || (time() - filemtime($cache)) > 600) {
+        $context = stream_context_create([
+            'http' => [
+                'timeout' => 15,
+                'follow_location' => 1,
+                'user_agent' => 'RACO-Scholars-Website/1.0'
+            ]
+        ]);
+
+        $data = @file_get_contents($url, false, $context);
+
+        if ($data !== false && strlen($data) > 10) {
+            file_put_contents($cache, $data);
+        }
+    }
+
+    if (!is_file($cache)) {
+        return [];
+    }
+
+    $file = fopen($cache, 'r');
+
+    if (!$file) {
+        return [];
+    }
+
+    $rows = [];
+
+    while (($row = fgetcsv($file, 0, ',', '"', '')) !== false) {
+        $rows[] = $row;
+    }
+
+    fclose($file);
+
+    return $rows;
 }
-$S=[
- 'n'=>'RACO Commission','s'=>'Child and Rural Care Initiative','since'=>2003,'sheet'=>'https://docs.google.com/spreadsheets/d/e/2PACX-1vR9m6VlnqMmkEw_oi9vXLDzgIeUPxp3uULTF9BtmqpauwsCys061pOn4SRtC7CdQaghzlnw5nOSXrpO/pub?gid=656297882&single=true&output=csv', // published Google Sheet CSV link for scholars.php
- 'ga'=>'', // put a Google Analytics ID (G-XXXX) here to enable analytics after consent
- 
- 'wa'=>'2347080004902','mail'=>'info@racochildinitiative.org',
- 'ph'=>[['0802 262 8461','Hotline 1 (ES)'],['0906 056 2048','Hotline 2 (Divine)'],['0802 699 4164','Hotline 3'],['0708 000 4902','Official WhatsApp']],
- 'loc'=>[
-  ['Lagos: RACO Light House','33 Taiwo Adebambo Street, Araromi, Ibeju Agbe, Ibeju Lekki LGA, Lagos State','Our official take-off centre for fully executing the RACO mandate.'],
-  ['Ogun: Topaz Gardens, Light City','Itawo, Itamapako, off Ijebu Ode-Epe Expressway, by GUTS FM Toll Gate, off Oduagboju Bus Stop, Ijebu Ode LGA, Ogun State',''],
-  ['Corporate headquarters: Mission Control Tower','Light City, Itawo, Itamapako, off Ijebu Ode-Epe Expressway, by GUTS FM Toll Gate, Ijebu Ode LGA, Ogun State','']],
- 'prog'=>[
-  ['Free nursery and primary school','Free tuition, textbooks, writing materials, notebooks, uniforms and clothing, plus a nutritious lunch every school day, for orphans and vulnerable children in rural areas. Over 400 children today; we aim to reach 3,000.','school-classroom.jpg'],
-  ['Orphanage care and protection','A faith-based home for orphaned, vulnerable and displaced poor children: meals, shelter, welfare, education and emotional support, with the goal of reintegrating every child into society.','children-courtyard.jpg'],
-  ['Rural women empowerment','Vocational training and starter tools for rural widows: tailoring, catering, small-scale farming, food vending, and pepper and cassava grinding businesses.','widows-empowerment.jpg'],
-  ['Youth skills training','Hands-on training in motorbike repair, shoe and bag making, electrical works, plumbing, carpentry, aluminium work, farming and agribusiness.','youth-skills.jpg'],
-  ['Support for the aged','Daily meals, essential medications and general welfare, so that no elderly person is left behind or forgotten.','aged-support.jpg'],
-  ['Free medical outreach','Free outreaches across rural communities, and the RACO Life Centre clinic, which offers free medical services to those in need.','medical-outreach.jpg']],
- // TEAM: replace each [Name]/[Role] and add the photo to assets/img with the file name shown. Add or delete rows freely.
- 'team'=>[
-  ['The Visionary','Founder and Visionary Leader','trustee-visionary.jpg','Trustees'],
-  ['Deacon Osas','Trustee, Governance and Operations','trustee-osas.jpg','Trustees'],
-  ['Deacon Obong','Trustee, Welfare and Stewardship','trustee-obong.jpg','Trustees'],
-  ['Sister Ekeng','Trustee, Child Protection and Care','trustee-ekeng.jpg','Trustees'],
-  ['Otunba','Trustee, Community Relations','trustee-otunba.jpg','Trustees'],
-  ['Oluwaseunfunmi','Trustee, Youth and Development','trustee-oluwaseunfunmi.jpg','Trustees'],
-  ['Pastor Peter','Trustee, Spiritual Guidance and Welfare','trustee-pastor-peter.jpg','Trustees'],
-  ['Mrs. Elizabeth Daniel','Trustee, Widows Empowerment','trustee-elizabeth-daniel.jpg','Trustees'],
-  // Ambassadors: replace [Full name] and add the photos, or delete these rows
-  ['[Full name]','[Ambassador]','ambassador-1.jpg','Ambassadors'],['[Full name]','[Ambassador]','ambassador-2.jpg','Ambassadors'],['[Full name]','[Ambassador]','ambassador-3.jpg','Ambassadors']],
- 'ev'=>[['May 1','Light City Foundational Laying Day'],['Jul 26','RACO Schools Combined Graduation and Thanksgiving'],['Sep 18','RACO Schools Founding Day (since 2007)'],['Oct 17','RACO Commission Annual Thanksgiving (since 2003)'],['Dec 19-23','Annual RACO Christmas Grace Fun Fair and Rural Widows Empowerment Ceremony']],
-];
+
+/**
+ * Converts Google Drive and ordinary image links
+ * into browser-displayable image URLs.
+ */
+function drive_img($value) {
+    $value = trim((string)$value);
+
+    if ($value === '') {
+        return '';
+    }
+
+    // Google Forms may return more than one uploaded file.
+    $links = preg_split('/,\s*(?=https?:\/\/)/i', $value);
+    $value = trim($links[0] ?? '');
+
+    if ($value === '') {
+        return '';
+    }
+
+    $id = '';
+
+    // Google Drive file links:
+    // drive.google.com/file/d/FILE_ID/view
+    // drive.google.com/uc?id=FILE_ID
+    // drive.google.com/open?id=FILE_ID
+    // drive.google.com/thumbnail?id=FILE_ID
+    if (preg_match('~/(?:file/)?d/([a-zA-Z0-9_-]+)~', $value, $match)) {
+        $id = $match[1];
+    } elseif (preg_match('~[?&]id=([a-zA-Z0-9_-]+)~', $value, $match)) {
+        $id = $match[1];
+    }
+
+    if ($id !== '') {
+        return 'https://drive.google.com/thumbnail?id=' .
+            rawurlencode($id) . '&sz=w1000';
+    }
+
+    // Accept ordinary HTTPS image URLs.
+    if (
+        filter_var($value, FILTER_VALIDATE_URL) &&
+        in_array(strtolower(parse_url($value, PHP_URL_SCHEME)), ['http', 'https'], true)
+    ) {
+        return $value;
+    }
+
+    return '';
+}
+
+/**
+ * Finds a column using its heading.
+ */
+function find_column($headers, $keywords, $exclude = []) {
+    foreach ($headers as $index => $heading) {
+        foreach ($exclude as $word) {
+            if (strpos($heading, $word) !== false) {
+                continue 2;
+            }
+        }
+
+        foreach ($keywords as $word) {
+            if (strpos($heading, $word) !== false) {
+                return $index;
+            }
+        }
+    }
+
+    return -1;
+}
+
+/**
+ * Load scholar records.
+ */
+$rows = sheet_rows($S['sheet'] ?? 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR9m6VlnqMmkEw_oi9vXLDzgIeUPxp3uULTF9BtmqpauwsCys061pOn4SRtC7CdQaghzlnw5nOSXrpO/pub?gid=656297882&single=true&output=csv');
+$cards = [];
+
+if (count($rows) > 1) {
+    $headers = array_map(
+        function ($heading) {
+            return strtolower(trim((string)$heading));
+        },
+        array_shift($rows)
+    );
+
+    $nameColumn = find_column(
+        $headers,
+        ['name'],
+        ['school', 'institution', 'course']
+    );
+
+    $schoolColumn = find_column($headers, ['institution', 'school', 'university']);
+    $courseColumn = find_column($headers, ['course', 'programme', 'department']);
+    $levelColumn = find_column($headers, ['level', 'year', 'class']);
+    $storyColumn = find_column($headers, ['story', 'background', 'about']);
+    $photoColumn = find_column($headers, ['picture', 'photo', 'image', 'upload']);
+    $approvalColumn = find_column($headers, ['approved', 'approve']);
+
+    foreach ($rows as $row) {
+        // Only display students approved by RACO.
+        if ($approvalColumn < 0 || $nameColumn < 0) {
+            continue;
+        }
+
+        $approval = strtolower(trim($row[$approvalColumn] ?? ''));
+
+        if ($approval !== 'yes') {
+            continue;
+        }
+
+        $name = trim($row[$nameColumn] ?? '');
+
+        if ($name === '') {
+            continue;
+        }
+
+        $course = $courseColumn >= 0
+            ? trim($row[$courseColumn] ?? '')
+            : '';
+
+        $level = $levelColumn >= 0
+            ? trim($row[$levelColumn] ?? '')
+            : '';
+
+        $cards[] = [
+            'n' => $name,
+            's' => $schoolColumn >= 0
+                ? trim($row[$schoolColumn] ?? '')
+                : '',
+            'c' => $course,
+            'l' => $level,
+            'b' => $storyColumn >= 0
+                ? trim($row[$storyColumn] ?? '')
+                : '',
+            'p' => $photoColumn >= 0
+                ? drive_img($row[$photoColumn] ?? '')
+                : ''
+        ];
+    }
+}
+?>
+
+<style>
+.sch {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 25px;
+}
+
+.sch .mem {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.sch .pt {
+    width: 100%;
+    height: 260px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    object-fit: cover;
+    border-radius: 12px;
+    background: #f1f3f2;
+}
+
+.sch .ph {
+    color: #64736b;
+    text-align: center;
+    padding: 15px;
+}
+
+.sch .mem > b {
+    display: block;
+    margin-top: 14px;
+}
+
+.sch .mem > span {
+    display: block;
+    margin-top: 5px;
+}
+
+.sch details {
+    margin-top: 12px;
+}
+
+.sch summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.sch details p {
+    margin-top: 8px;
+}
+</style>
+
+<div class="page">
+    <div class="wrap">
+        <span class="bar"></span>
+        <h1>Our Scholars</h1>
+
+        <p class="lead">
+            The young people RACO is helping to learn, and the stories behind them.
+            Each profile is shared with the consent of the student or their guardian.
+        </p>
+    </div>
+</div>
+
+<section>
+    <div class="wrap">
+
+        <?php if (!empty($cards)): ?>
+
+            <div class="tm sch">
+
+                <?php foreach ($cards as $c): ?>
+
+                    <div class="mem rv">
+
+                        <?php if (!empty($c['p'])): ?>
+
+                            <img
+                                class="pt"
+                                src="<?= h($c['p']) ?>"
+                                alt="<?= h($c['n']) ?>"
+                                loading="lazy"
+                                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                            >
+
+                            <div class="ph pt" style="display:none">
+                                <span>Photo unavailable</span>
+                            </div>
+
+                        <?php else: ?>
+
+                            <div class="ph pt">
+                                <span>No photo uploaded</span>
+                            </div>
+
+                        <?php endif; ?>
+
+                        <b><?= h($c['n']) ?></b>
+
+                        <?php
+                        if ($c['c'] || $c['l']) {
+                            $details = trim(
+                                $c['c'] .
+                                ($c['c'] && $c['l'] ? ', ' : '') .
+                                $c['l']
+                            );
+
+                            echo '<span>' . h($details) . '</span>';
+                        }
+
+                        if ($c['s']) {
+                            echo '<span>' . h($c['s']) . '</span>';
+                        }
+                        ?>
+
+                        <?php if (!empty($c['b'])): ?>
+
+                            <details>
+                                <summary>Read their story</summary>
+                                <p><?= nl2br(h($c['b'])) ?></p>
+                            </details>
+
+                        <?php endif; ?>
+
+                    </div>
+
+                <?php endforeach; ?>
+
+            </div>
+
+        <?php else: ?>
+
+            <p class="lead">
+                Student profiles are coming soon. Check back shortly.
+            </p>
+
+        <?php endif; ?>
+
+    </div>
+</section>
+
+<section class="cta">
+    <div class="wrap rv">
+        <h2>Help a child reach the next class</h2>
+
+        <p>
+            Sponsor a student's education, books and school fees.
+        </p>
+
+        <a class="btn btn-r" href="support.php">
+            Sponsor a student
+        </a>
+    </div>
+</section>
+
+<?php require 'includes/footer.php'; ?>
+
