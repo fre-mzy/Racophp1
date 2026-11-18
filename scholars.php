@@ -2,452 +2,236 @@
 <?php
 $title = 'Our Scholars';
 
-require 'includes/header.php';
+require_once __DIR__ . '/includes/header.php';
 
-/*
- * IMPORTANT:
- * sheet_rows() and drive_img() are already defined
- * in includes/config.php. Do not redeclare them here.
- */
+// Find a spreadsheet column using possible heading names
+function find_column($headers, $keywords, $exclude = []) {
+    foreach ($headers as $index => $header) {
+        $header = strtolower(trim((string)$header));
 
-/**
- * Find a Google Sheet column by its heading.
- */
-function scholar_column($headers, $keywords, $exclude = [])
-{
-    foreach ($headers as $index => $heading) {
-        $heading = strtolower(trim((string) $heading));
+        foreach ($keywords as $keyword) {
+            if (strpos($header, strtolower($keyword)) !== false) {
+                $excluded = false;
 
-        foreach ($exclude as $word) {
-            if (strpos($heading, strtolower($word)) !== false) {
-                continue 2;
-            }
-        }
+                foreach ($exclude as $word) {
+                    if (strpos($header, strtolower($word)) !== false) {
+                        $excluded = true;
+                        break;
+                    }
+                }
 
-        foreach ($keywords as $word) {
-            if (strpos($heading, strtolower($word)) !== false) {
-                return $index;
+                if (!$excluded) {
+                    return $index;
+                }
             }
         }
     }
 
-    return -1;
+    return null;
 }
 
-/**
- * Load scholar records from the published Google Sheet.
- */
-$rows = sheet_rows($S['sheet'] ?? '');
-$cards = [];
+$sheetUrl = $S['sheet'] ?? '';
+$rows = sheet_rows($sheetUrl);
 
-if (is_array($rows) && count($rows) > 1) {
+$scholars = [];
+$errorMessage = '';
 
-    // Clean and normalize the column headings.
-    $headers = array_map(function ($heading) {
-        return strtolower(trim((string) $heading));
-    }, $rows[0]);
+if (count($rows) > 1) {
+    $headers = array_shift($rows);
 
-    // Identify the relevant columns.
-    $nameColumn = scholar_column(
-        $headers,
-        ['name'],
-        ['school', 'institution', 'course']
-    );
+    $nameCol = find_column($headers, ['name', 'full name', 'student']);
+    $schoolCol = find_column($headers, ['school', 'institution', 'university']);
+    $courseCol = find_column($headers, ['course', 'department', 'programme']);
+    $levelCol = find_column($headers, ['level', 'class', 'year']);
+    $storyCol = find_column($headers, ['story', 'about', 'description']);
+    $photoCol = find_column($headers, ['photo', 'picture', 'image']);
+    $approvalCol = find_column($headers, ['approval', 'approved', 'status']);
 
-    $schoolColumn = scholar_column(
-        $headers,
-        ['institution', 'school', 'university']
-    );
+    if ($nameCol === null) {
+        $errorMessage = 'The Name column could not be found in the spreadsheet.';
+    } elseif ($approvalCol === null) {
+        $errorMessage = 'An Approval column is required. Add one to your Google Sheet and mark approved scholars as Yes.';
+    } else {
+        foreach ($rows as $row) {
+            $name = trim($row[$nameCol] ?? '');
+            $approval = strtolower(trim($row[$approvalCol] ?? ''));
 
-    $courseColumn = scholar_column(
-        $headers,
-        ['course', 'programme', 'program', 'department']
-    );
-
-    $levelColumn = scholar_column(
-        $headers,
-        ['level', 'year', 'class']
-    );
-
-    $storyColumn = scholar_column(
-        $headers,
-        ['story', 'background', 'about']
-    );
-
-    $photoColumn = scholar_column(
-        $headers,
-        ['picture', 'photo', 'image', 'upload']
-    );
-
-    $approvalColumn = scholar_column(
-        $headers,
-        ['approved', 'approval', 'approve']
-    );
-
-    // Process submitted records.
-    foreach (array_slice($rows, 1) as $row) {
-
-        $name = $nameColumn >= 0
-            ? trim((string) ($row[$nameColumn] ?? ''))
-            : '';
-
-        if ($name === '') {
-            continue;
-        }
-
-        // Only display approved scholars.
-        if ($approvalColumn >= 0) {
-            $approval = strtolower(
-                trim((string) ($row[$approvalColumn] ?? ''))
-            );
-
-            if (!in_array($approval, ['yes', 'approved', 'true', '1'], true)) {
+            // Only display scholars approved for publication
+            if ($name === '' || !in_array($approval, ['yes', 'approved', 'true'], true)) {
                 continue;
             }
+
+            $scholars[] = [
+                'name'  => $name,
+                'school' => $schoolCol !== null ? trim($row[$schoolCol] ?? '') : '',
+                'course' => $courseCol !== null ? trim($row[$courseCol] ?? '') : '',
+                'level' => $levelCol !== null ? trim($row[$levelCol] ?? '') : '',
+                'story' => $storyCol !== null ? trim($row[$storyCol] ?? '') : '',
+                'photo' => $photoCol !== null ? drive_img($row[$photoCol] ?? '') : ''
+            ];
         }
-
-        $school = $schoolColumn >= 0
-            ? trim((string) ($row[$schoolColumn] ?? ''))
-            : '';
-
-        $course = $courseColumn >= 0
-            ? trim((string) ($row[$courseColumn] ?? ''))
-            : '';
-
-        $level = $levelColumn >= 0
-            ? trim((string) ($row[$levelColumn] ?? ''))
-            : '';
-
-        $story = $storyColumn >= 0
-            ? trim((string) ($row[$storyColumn] ?? ''))
-            : '';
-
-        $photoValue = $photoColumn >= 0
-            ? trim((string) ($row[$photoColumn] ?? ''))
-            : '';
-
-        // Convert Google Drive links into displayable image URLs.
-        $photo = $photoValue !== ''
-            ? drive_img($photoValue)
-            : '';
-
-        $cards[] = [
-            'n' => $name,
-            's' => $school,
-            'c' => $course,
-            'l' => $level,
-            'b' => $story,
-            'p' => $photo
-        ];
     }
+} else {
+    $errorMessage = 'The scholars spreadsheet could not be loaded. Please check the published Google Sheets link.';
 }
 ?>
 
 <style>
-.sch-page {
-    padding: 65px 0 85px;
+.scholar-section {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 65px 20px;
 }
 
-.sch-intro {
-    max-width: 760px;
-    margin: 0 auto 45px;
+.scholar-intro {
+    max-width: 700px;
+    margin: 0 auto 40px;
     text-align: center;
 }
 
-.sch-intro h1 {
-    font-size: clamp(2rem, 5vw, 3.3rem);
-    margin-bottom: 15px;
-    line-height: 1.15;
+.scholar-intro h1 {
+    font-size: clamp(2rem, 5vw, 3rem);
+    margin-bottom: 12px;
 }
 
-.sch-intro p {
-    color: var(--muted, #667085);
-    line-height: 1.8;
-}
-
-.sch-count {
-    display: inline-block;
-    margin-top: 15px;
-    padding: 8px 16px;
-    border-radius: 30px;
-    background: #edf6ef;
-    color: #236b3b;
-    font-size: .9rem;
-    font-weight: 700;
-}
-
-.sch-grid {
+.scholar-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 25px;
 }
 
-.sch-card {
+.scholar-card {
     overflow: hidden;
-    border-radius: 17px;
+    border-radius: 15px;
     background: #fff;
-    border: 1px solid #e8e8e8;
-    box-shadow: 0 7px 25px rgba(0,0,0,.055);
-    transition: transform .25s ease, box-shadow .25s ease;
+    box-shadow: 0 5px 25px rgba(0,0,0,.08);
 }
 
-.sch-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 13px 32px rgba(0,0,0,.10);
-}
-
-.sch-photo {
-    height: 260px;
-    background: #edf2ed;
-    overflow: hidden;
-}
-
-.sch-photo img {
+.scholar-card img,
+.scholar-photo-placeholder {
     width: 100%;
-    height: 100%;
-    display: block;
+    height: 250px;
     object-fit: cover;
+    display: block;
 }
 
-.sch-photo-fallback {
-    height: 100%;
+.scholar-photo-placeholder {
+    background: #f0f2ed;
     display: flex;
-    align-items: center;
     justify-content: center;
-    flex-direction: column;
-    padding: 20px;
-    text-align: center;
-    color: #47704e;
-    background: linear-gradient(135deg, #e7f0e7, #f5f7f2);
+    align-items: center;
+    color: #64705e;
 }
 
-.sch-photo-fallback span {
-    font-size: 3rem;
-    margin-bottom: 10px;
+.scholar-info {
+    padding: 22px;
 }
 
-.sch-body {
-    padding: 23px;
-}
-
-.sch-body h3 {
-    font-size: 1.2rem;
+.scholar-info h3 {
     margin: 0 0 10px;
-    color: #1d3524;
+    font-size: 1.25rem;
 }
 
-.sch-meta {
-    color: #47704e;
-    font-size: .9rem;
-    line-height: 1.7;
-    margin-bottom: 12px;
+.scholar-info p {
+    margin: 7px 0;
+    line-height: 1.6;
 }
 
-.sch-story {
-    color: #667085;
-    font-size: .92rem;
-    line-height: 1.75;
-    overflow-wrap: anywhere;
-}
-
-.sch-empty {
-    max-width: 650px;
-    margin: 35px auto;
-    padding: 35px 25px;
+.scholar-error,
+.no-scholars {
     text-align: center;
-    border-radius: 16px;
-    background: #f5f8f5;
+    padding: 25px;
+    background: #f8f8f4;
+    border-radius: 12px;
 }
 
-.sch-empty h3 {
-    margin-bottom: 10px;
-}
-
-.sch-empty p {
-    color: #667085;
-    line-height: 1.7;
-}
-
-.sch-cta {
-    margin-top: 65px;
-    padding: 40px 25px;
-    text-align: center;
-    border-radius: 18px;
-    background: #173d25;
-    color: #fff;
-}
-
-.sch-cta h2 {
-    margin-bottom: 12px;
-}
-
-.sch-cta p {
-    max-width: 600px;
-    margin: 0 auto 22px;
-    line-height: 1.7;
-    color: rgba(255,255,255,.85);
-}
-
-.sch-cta a {
-    display: inline-block;
-    padding: 13px 24px;
-    border-radius: 7px;
-    background: #fff;
-    color: #173d25;
-    font-weight: 700;
-    text-decoration: none;
-}
-
-@media (max-width: 900px) {
-    .sch-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 600px) {
-    .sch-page {
-        padding: 42px 0 60px;
-    }
-
-    .sch-grid {
-        grid-template-columns: 1fr;
-        gap: 20px;
-    }
-
-    .sch-photo {
-        height: 280px;
-    }
-
-    .sch-cta {
-        padding: 32px 20px;
-    }
+.scholar-error {
+    color: #9b2c2c;
 }
 </style>
 
-<main class="sch-page">
-    <div class="wrap">
+<main class="scholar-section">
 
-        <section class="sch-intro">
-            <h1>Our University Scholars</h1>
-
-            <p>
-                Meet the students whose educational journeys are being
-                supported through RACO. Every scholar represents hope,
-                opportunity and a future worth investing in.
-            </p>
-
-            <div class="sch-count">
-                <?= count($cards) ?>
-                <?= count($cards) === 1 ? 'Approved Scholar' : 'Approved Scholars' ?>
-            </div>
-        </section>
-
-        <?php if (!empty($cards)): ?>
-
-            <section class="sch-grid">
-
-                <?php foreach ($cards as $c): ?>
-
-                    <article class="sch-card">
-
-                        <div class="sch-photo">
-
-                            <?php if (!empty($c['p'])): ?>
-
-                                <img
-                                    src="<?= h($c['p']) ?>"
-                                    alt="<?= h($c['n']) ?>"
-                                    loading="lazy"
-                                    onerror="this.style.display='none';this.nextElementSibling.style.display='flex';"
-                                >
-
-                                <div class="sch-photo-fallback" style="display:none">
-                                    <span>🎓</span>
-                                    <strong><?= h($c['n']) ?></strong>
-                                    <small>Scholar photograph unavailable</small>
-                                </div>
-
-                            <?php else: ?>
-
-                                <div class="sch-photo-fallback">
-                                    <span>🎓</span>
-                                    <strong><?= h($c['n']) ?></strong>
-                                    <small>Scholar photograph coming soon</small>
-                                </div>
-
-                            <?php endif; ?>
-
-                        </div>
-
-                        <div class="sch-body">
-
-                            <h3><?= h($c['n']) ?></h3>
-
-                            <div class="sch-meta">
-
-                                <?php if ($c['s'] !== ''): ?>
-                                    <div>
-                                        <strong>Institution:</strong>
-                                        <?= h($c['s']) ?>
-                                    </div>
-                                <?php endif; ?>
-
-                                <?php if ($c['c'] !== ''): ?>
-                                    <div>
-                                        <strong>Course:</strong>
-                                        <?= h($c['c']) ?>
-                                    </div>
-                                <?php endif; ?>
-
-                                <?php if ($c['l'] !== ''): ?>
-                                    <div>
-                                        <strong>Level:</strong>
-                                        <?= h($c['l']) ?>
-                                    </div>
-                                <?php endif; ?>
-
-                            </div>
-
-                            <?php if ($c['b'] !== ''): ?>
-                                <p class="sch-story">
-                                    <?= nl2br(h($c['b'])) ?>
-                                </p>
-                            <?php endif; ?>
-
-                        </div>
-
-                    </article>
-
-                <?php endforeach; ?>
-
-            </section>
-
-        <?php else: ?>
-
-            <div class="sch-empty">
-                <h3>Scholar profiles are being updated</h3>
-
-                <p>
-                    Our scholars' profiles will appear here once their
-                    information has been submitted and approved.
-                    Please check back soon.
-                </p>
-            </div>
-
-        <?php endif; ?>
-
-        <section class="sch-cta">
-            <h2>Help a Student Go Further</h2>
-
-            <p>
-                Your support can help provide access to education and
-                create opportunities for children and young people.
-            </p>
-
-            <a href="support.php">Support Our Mission</a>
-        </section>
-
+    <div class="scholar-intro">
+        <h1>Our Scholars</h1>
+        <p>
+            Meet the students whose educational journeys are supported
+            through the work and commitment of RACO.
+        </p>
     </div>
+
+    <?php if ($errorMessage !== ''): ?>
+
+        <div class="scholar-error">
+            <?= h($errorMessage) ?>
+        </div>
+
+    <?php elseif (empty($scholars)): ?>
+
+        <div class="no-scholars">
+            <h3>No approved scholars to display yet.</h3>
+            <p>Please check back later.</p>
+        </div>
+
+    <?php else: ?>
+
+        <div class="scholar-grid">
+
+            <?php foreach ($scholars as $scholar): ?>
+
+                <article class="scholar-card">
+
+                    <?php if ($scholar['photo'] !== ''): ?>
+
+                        <img
+                            src="<?= h($scholar['photo']) ?>"
+                            alt="<?= h($scholar['name']) ?>"
+                            loading="lazy"
+                        >
+
+                    <?php else: ?>
+
+                        <div class="scholar-photo-placeholder">
+                            Scholar Photo
+                        </div>
+
+                    <?php endif; ?>
+
+                    <div class="scholar-info">
+
+                        <h3><?= h($scholar['name']) ?></h3>
+
+                        <?php if ($scholar['school'] !== ''): ?>
+                            <p><strong>Institution:</strong>
+                                <?= h($scholar['school']) ?>
+                            </p>
+                        <?php endif; ?>
+
+                        <?php if ($scholar['course'] !== ''): ?>
+                            <p><strong>Course:</strong>
+                                <?= h($scholar['course']) ?>
+                            </p>
+                        <?php endif; ?>
+
+                        <?php if ($scholar['level'] !== ''): ?>
+                            <p><strong>Level:</strong>
+                                <?= h($scholar['level']) ?>
+                            </p>
+                        <?php endif; ?>
+
+                        <?php if ($scholar['story'] !== ''): ?>
+                            <p><?= nl2br(h($scholar['story'])) ?></p>
+                        <?php endif; ?>
+
+                    </div>
+                </article>
+
+            <?php endforeach; ?>
+
+        </div>
+
+    <?php endif; ?>
+
 </main>
 
-<?php require 'includes/footer.php'; ?>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>
