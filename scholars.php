@@ -527,7 +527,8 @@ $corpsMembers = [
 <!-- PAGE STYLES -->
 
 <style>
-
+}
+    
 .scholar-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -549,13 +550,31 @@ $corpsMembers = [
     background: rgba(128, 128, 128, .10);
 }
 
-.scholar-photo,
+
+/* Scholar photograph display */
+.scholar-photo {
+    display: block;
+    width: 100%;
+    aspect-ratio: 4 / 5;
+    object-fit: contain;
+    object-position: center;
+    background: var(--alt);
+}
+
+/* Photograph placeholder */
 .scholar-placeholder {
     display: flex;
     width: 100%;
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
+    aspect-ratio: 4 / 5;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    text-align: center;
+    background: rgba(128, 128, 128, .10);
 }
+
 
 .scholar-placeholder {
     flex-direction: column;
