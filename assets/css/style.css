@@ -125,13 +125,17 @@ html.js-ready .rv.in {
   gap: 8px;
 }
 
+
 .mem .pt {
   width: 100%;
-  aspect-ratio: 4 / 5;
-  object-fit: cover;
+  height: 340px;
+  aspect-ratio: auto;
+  object-fit: contain;
+  object-position: center;
   border-radius: 16px;
   background: var(--alt);
 }
+
 
 .mem > b {
   font-family: var(--f);
