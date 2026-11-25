@@ -46,46 +46,35 @@
             <a href="contact.php">Partner with RACO</a>
         </div>
 
-        <!-- CONTACT DETAILS -->
-        <div>
-            <b class="fh">Contact RACO</b>
+        
+<!-- CONTACT DETAILS -->
+<div>
+    <b class="fh">Contact RACO</b>
 
-            <span class="footer-contact-label">
-                Call or WhatsApp
-            </span>
+    <?php foreach ($S['ph'] as $p): ?>
 
-            <a href="tel:+2348026994164" class="footer-phone">
-                +234 802 699 4164
-                <small>Calls and WhatsApp</small>
-            </a>
+        <?php
+        $digits = preg_replace('/\D/', '', $p[0]);
+        ?>
 
-            <span class="footer-contact-label">
-                Additional telephone lines
-            </span>
+        <a href="tel:+<?=h($digits)?>" class="footer-phone">
+            <?=h($p[0])?>
+            <small><?=h($p[1])?></small>
+        </a>
 
-            <a href="tel:+2347080004902" class="footer-phone">
-                +234 708 000 4902
-                <small>Call only</small>
-            </a>
+    <?php endforeach; ?>
 
-            <a href="tel:+2348022628461" class="footer-phone">
-                +234 802 262 8461
-                <small>Call only</small>
-            </a>
+    <a href="mailto:<?=h($S['mail'])?>">
+        <?=h($S['mail'])?>
+    </a>
 
-            <a href="mailto:<?=h($S['mail'])?>" class="footer-email">
-                <?=h($S['mail'])?>
-            </a>
+    <a href="https://wa.me/<?=h($S['wa'])?>?text=<?=rawurlencode($S['wa_message'])?>"
+       target="_blank"
+       rel="noopener noreferrer">
+        Message us on WhatsApp →
+    </a>
+</div>
 
-            <a href="https://wa.me/2348026994164"
-               target="_blank"
-               rel="noopener noreferrer"
-               class="footer-whatsapp-link">
-                Message us on WhatsApp →
-            </a>
-        </div>
-
-    </div>
 
     <!-- LOCATIONS -->
     <div class="wrap footer-locations">
