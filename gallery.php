@@ -9,7 +9,7 @@ require 'includes/header.php';
 |--------------------------------------------------------------------------
 */
 
-$galleryApiUrl = 'https://script.google.com/macros/s/AKfycbzElBliBiqNWijiLX9BpxbOviSbKf8tVI8I_5Zdwdpp3oMzy5DwDFv09bpLPI0LhqXw/exec';
+$galleryApiUrl = 'https://script.google.com/macros/s/AKfycbx6PaBzHI8wFz2jaCSiuahKdc6DTTa7T80RLMW3GsIS0fHHIzI3pM80TqJLKQBNdsbf/exec';
 
 $allowedCategories = [
     'Children and Care',
